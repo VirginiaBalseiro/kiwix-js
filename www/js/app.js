@@ -36,6 +36,15 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
     var MAX_SEARCH_RESULT_SIZE = 50;
 
     /**
+     * The delay (in milliseconds) between two "keepalive" messages
+     * sent to the ServiceWorker (so that it is not stopped by
+     * the browser, and keeps the MessageChannel to communicate
+     * with the application)
+     * @type Integer
+     */
+    var DELAY_BETWEEN_KEEPALIVE_SERVICEWORKER = 30000;
+
+    /**
      * @type ZIMArchive
      */
     var selectedArchive = null;
@@ -191,7 +200,6 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
         else {
             setContentInjectionMode('jquery');
         }
-        
     });
     
     /**
@@ -227,6 +235,28 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
     var contentInjectionMode;
     
     /**
+     * Send an 'init' message to the ServiceWorker with a new MessageChannel
+     * to initialize it, or to keep it alive.
+     * This MessageChannel allows a 2-way communication between the ServiceWorker
+     * and the application
+     * @param {Boolean} isInit
+     */
+    function initOrKeepAliveServiceWorker(isInit) {
+        if (isInit || contentInjectionMode === 'serviceworker') {
+            // Create a new messageChannel
+            var tmpMessageChannel = new MessageChannel();
+            tmpMessageChannel.port1.onmessage = handleMessageChannelMessage;
+            // Send the init message to the ServiceWorker, with this MessageChannel as a parameter
+            navigator.serviceWorker.controller.postMessage({'action': 'init'}, [tmpMessageChannel.port2]);
+            messageChannel = tmpMessageChannel;
+            console.log("init message sent to ServiceWorker");
+            // Schedule to do it again regularly to keep the 2-way communication alive.
+            // See https://github.com/kiwix/kiwix-html5/issues/145 to understand why
+            setTimeout(initOrKeepAliveServiceWorker, DELAY_BETWEEN_KEEPALIVE_SERVICEWORKER, false);
+        }
+    }
+    
+    /**
      * Sets the given injection mode.
      * This involves registering (or re-enabling) the Service Worker if necessary
      * It also refreshes the API status for the user afterwards.
@@ -256,13 +286,6 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
                 return;
             }
             
-            if (!messageChannel) {
-                // Let's create the messageChannel for the 2-way communication
-                // with the Service Worker
-                messageChannel = new MessageChannel();
-                messageChannel.port1.onmessage = handleMessageChannelMessage;
-            }
-                    
             if (!isServiceWorkerReady()) {
                 $('#serviceWorkerStatus').html("ServiceWorker API available : trying to register it...");
                 navigator.serviceWorker.register('../service-worker.js').then(function (reg) {
@@ -275,19 +298,24 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
                     var serviceWorker = reg.installing || reg.waiting || reg.active;
                     serviceWorker.addEventListener('statechange', function(statechangeevent) {
                         if (statechangeevent.target.state === 'activated') {
-                            console.log("try to post an init message to ServiceWorker");
-                            navigator.serviceWorker.controller.postMessage({'action': 'init'}, [messageChannel.port2]);
-                            console.log("init message sent to ServiceWorker");
+                            // Create the MessageChannel
+                            // and send the 'init' message to the ServiceWorker
+                            initOrKeepAliveServiceWorker(true);
                         }
                     });
+                    if (serviceWorker.state === 'activated') {
+                        // Even if the ServiceWorker is already activated,
+                        // We need to re-create the MessageChannel
+                        // and send the 'init' message to the ServiceWorker
+                        // in case it has been stopped and lost its context
+                        initOrKeepAliveServiceWorker(true);
+                    }
                 }, function (err) {
                     console.error('error while registering serviceWorker', err);
                     refreshAPIStatus();
                 });
             } else {
-                console.log("try to re-post an init message to ServiceWorker, to re-enable it in case it was disabled");
-                navigator.serviceWorker.controller.postMessage({'action': 'init'}, [messageChannel.port2]);
-                console.log("init message sent to ServiceWorker");
+                initOrKeepAliveServiceWorker(true);
             }
         }
         $('input:radio[name=contentInjectionMode]').prop('checked', false);
@@ -324,7 +352,7 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
         }
         return true;
     }
-    
+        
     // At launch, we try to set the last content injection mode (stored in a cookie)
     var lastContentInjectionMode = cookies.getItem('lastContentInjectionMode');
     if (lastContentInjectionMode) {
