@@ -240,10 +240,9 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
      * to initialize it, or to keep it alive.
      * This MessageChannel allows a 2-way communication between the ServiceWorker
      * and the application
-     * @param {Boolean} isInit
      */
-    function initOrKeepAliveServiceWorker(isInit) {
-        if (isInit || contentInjectionMode === 'serviceworker') {
+    function initOrKeepAliveServiceWorker() {
+        if (contentInjectionMode === 'serviceworker') {
             // Create a new messageChannel
             var tmpMessageChannel = new MessageChannel();
             tmpMessageChannel.port1.onmessage = handleMessageChannelMessage;
@@ -302,7 +301,7 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
                         if (statechangeevent.target.state === 'activated') {
                             // Create the MessageChannel
                             // and send the 'init' message to the ServiceWorker
-                            initOrKeepAliveServiceWorker(true);
+                            initOrKeepAliveServiceWorker();
                         }
                     });
                     if (serviceWorker.state === 'activated') {
@@ -310,14 +309,14 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
                         // We need to re-create the MessageChannel
                         // and send the 'init' message to the ServiceWorker
                         // in case it has been stopped and lost its context
-                        initOrKeepAliveServiceWorker(true);
+                        initOrKeepAliveServiceWorker();
                     }
                 }, function (err) {
                     console.error('error while registering serviceWorker', err);
                     refreshAPIStatus();
                 });
             } else {
-                initOrKeepAliveServiceWorker(true);
+                initOrKeepAliveServiceWorker();
             }
         }
         $('input:radio[name=contentInjectionMode]').prop('checked', false);
