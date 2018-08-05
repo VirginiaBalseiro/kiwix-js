@@ -233,6 +233,7 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
     }
     
     var contentInjectionMode;
+    var keepAliveServiceWorkerHandle;
     
     /**
      * Send an 'init' message to the ServiceWorker with a new MessageChannel
@@ -251,8 +252,9 @@ define(['jquery', 'zimArchiveLoader', 'util', 'uiUtil', 'cookies','abstractFiles
             messageChannel = tmpMessageChannel;
             console.log("init message sent to ServiceWorker");
             // Schedule to do it again regularly to keep the 2-way communication alive.
-            // See https://github.com/kiwix/kiwix-html5/issues/145 to understand why
-            setTimeout(initOrKeepAliveServiceWorker, DELAY_BETWEEN_KEEPALIVE_SERVICEWORKER, false);
+            // See https://github.com/kiwix/kiwix-js/issues/145 to understand why
+            clearTimeout(keepAliveServiceWorkerHandle);
+            keepAliveServiceWorkerHandle = setTimeout(initOrKeepAliveServiceWorker, DELAY_BETWEEN_KEEPALIVE_SERVICEWORKER, false);
         }
     }
     
